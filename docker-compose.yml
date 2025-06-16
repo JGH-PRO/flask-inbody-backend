@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  db:
+    image: postgres:13-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: inbodyuser
+      POSTGRES_PASSWORD: inbodypassword
+      POSTGRES_DB: inbodydb
+    ports:
+      - "5432:5432" # Expose port 5432 on host to connect to DB
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data: # Persists data even if container stops/restarts
