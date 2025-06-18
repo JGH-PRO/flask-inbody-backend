@@ -1,14 +1,15 @@
 import pytest
 import json
-from app import app, inbody_data, food_data # Import your Flask app and data stores
+from app import app # app is still the main entry point
+from apis import inbody_api, food_api # Import the modules
 
 @pytest.fixture
 def client():
     app.config['TESTING'] = True
     with app.test_client() as client:
         # Reset data before each test
-        inbody_data.clear()
-        food_data.clear()
+        inbody_api.inbody_data.clear() # Corrected path
+        food_api.food_data.clear()     # Corrected path
         yield client
 
 # Sample InBody data for testing
@@ -62,9 +63,9 @@ def test_add_inbody_record_success(client):
     assert data['message'] == "Record added successfully"
     assert data['user_id'] == 'user1'
     assert data['record_index'] == 0
-    assert 'user1' in inbody_data
-    assert len(inbody_data['user1']) == 1
-    assert inbody_data['user1'][0]['weight_kg'] == 70.0
+    assert 'user1' in inbody_api.inbody_data
+    assert len(inbody_api.inbody_data['user1']) == 1
+    assert inbody_api.inbody_data['user1'][0]['weight_kg'] == 70.0
 
 def test_add_inbody_record_missing_fields(client):
     response = client.post('/inbody/user1', json=incomplete_inbody_record)
@@ -111,9 +112,9 @@ def test_update_inbody_record_success(client):
     assert response.status_code == 200
     data = json.loads(response.data)
     assert data['message'] == "Record updated successfully"
-    assert inbody_data['user1'][0]['weight_kg'] == 72.0
-    assert inbody_data['user1'][0]['body_fat_percentage'] == 16.0
-    assert inbody_data['user1'][0]['timestamp'] == sample_inbody_record_1['timestamp'] # Check unchanged field
+    assert inbody_api.inbody_data['user1'][0]['weight_kg'] == 72.0
+    assert inbody_api.inbody_data['user1'][0]['body_fat_percentage'] == 16.0
+    assert inbody_api.inbody_data['user1'][0]['timestamp'] == sample_inbody_record_1['timestamp'] # Check unchanged field
 
 def test_update_inbody_record_user_not_found(client):
     response = client.put('/inbody/nonexistentuser/0', json={"weight_kg": 72.0})
@@ -143,8 +144,8 @@ def test_delete_inbody_record_success(client):
     assert response.status_code == 200
     data = json.loads(response.data)
     assert data['message'] == "Record deleted successfully"
-    assert len(inbody_data['user1']) == 1
-    assert inbody_data['user1'][0]['weight_kg'] == 71.0 # The second record is now at index 0
+    assert len(inbody_api.inbody_data['user1']) == 1
+    assert inbody_api.inbody_data['user1'][0]['weight_kg'] == 71.0 # The second record is now at index 0
 
 def test_delete_inbody_record_user_not_found(client):
     response = client.delete('/inbody/nonexistentuser/0')
@@ -167,15 +168,15 @@ def test_delete_multiple_inbody_records_and_check_indices(client):
     # Delete record at index 1
     response = client.delete('/inbody/user1/1')
     assert response.status_code == 200
-    assert len(inbody_data['user1']) == 2
-    assert inbody_data['user1'][0]['timestamp'] == sample_inbody_record_1['timestamp']
-    assert inbody_data['user1'][1]['timestamp'] == sample_inbody_record_1['timestamp'] # Original index 2 is now 1
+    assert len(inbody_api.inbody_data['user1']) == 2
+    assert inbody_api.inbody_data['user1'][0]['timestamp'] == sample_inbody_record_1['timestamp']
+    assert inbody_api.inbody_data['user1'][1]['timestamp'] == sample_inbody_record_1['timestamp'] # Original index 2 is now 1
 
     # Delete record at index 0
     response = client.delete('/inbody/user1/0')
     assert response.status_code == 200
-    assert len(inbody_data['user1']) == 1
-    assert inbody_data['user1'][0]['timestamp'] == sample_inbody_record_1['timestamp'] # Original index 2 record
+    assert len(inbody_api.inbody_data['user1']) == 1
+    assert inbody_api.inbody_data['user1'][0]['timestamp'] == sample_inbody_record_1['timestamp'] # Original index 2 record
 
 # === Test Food CRUD Operations ===
 
@@ -187,9 +188,9 @@ def test_add_food_record_success(client):
     assert data['message'] == "Food record added successfully"
     assert data['user_id'] == 'user1'
     assert data['record_index'] == 0
-    assert 'user1' in food_data
-    assert len(food_data['user1']) == 1
-    assert food_data['user1'][0]['food_type'] == "Apple"
+    assert 'user1' in food_api.food_data
+    assert len(food_api.food_data['user1']) == 1
+    assert food_api.food_data['user1'][0]['food_type'] == "Apple"
 
 def test_add_food_record_missing_fields(client):
     response = client.post('/food/user1', json=incomplete_food_record)
@@ -244,7 +245,7 @@ def test_get_food_records_empty(client):
     assert response.status_code == 404 # User not found, which is correct for no records yet
     # If user existed with no records, it would be 200 and empty list.
     # Let's create user then get:
-    food_data['user_with_no_records'] = []
+    food_api.food_data['user_with_no_records'] = []
     response = client.get('/food/user_with_no_records')
     assert response.status_code == 200
     data = json.loads(response.data)
@@ -300,9 +301,9 @@ def test_update_food_record_success(client):
     assert response.status_code == 200
     data = json.loads(response.data)
     assert data['message'] == "Record updated successfully"
-    assert food_data['user1'][0]['total_calories'] == 100
-    assert food_data['user1'][0]['protein_g'] == 1.0
-    assert food_data['user1'][0]['food_type'] == "Apple" # Unchanged
+    assert food_api.food_data['user1'][0]['total_calories'] == 100
+    assert food_api.food_data['user1'][0]['protein_g'] == 1.0
+    assert food_api.food_data['user1'][0]['food_type'] == "Apple" # Unchanged
 
 def test_update_food_record_user_not_found(client):
     response = client.put('/food/nonexistentuser/0', json={"total_calories": 100})
@@ -336,8 +337,8 @@ def test_delete_food_record_success(client):
     assert response.status_code == 200
     data = json.loads(response.data)
     assert data['message'] == "Record deleted successfully"
-    assert len(food_data['user1']) == 1
-    assert food_data['user1'][0]['food_type'] == "Chicken Breast"
+    assert len(food_api.food_data['user1']) == 1
+    assert food_api.food_data['user1'][0]['food_type'] == "Chicken Breast"
 
 def test_delete_food_record_user_not_found(client):
     response = client.delete('/food/nonexistentuser/0')
@@ -357,11 +358,11 @@ def test_delete_multiple_food_records_and_check_indices(client):
 
     response = client.delete('/food/user1/1') # Delete Chicken Breast
     assert response.status_code == 200
-    assert len(food_data['user1']) == 2
-    assert food_data['user1'][0]['food_type'] == "Apple"
-    assert food_data['user1'][1]['food_type'] == "Apple" # Original index 2 is now 1
+    assert len(food_api.food_data['user1']) == 2
+    assert food_api.food_data['user1'][0]['food_type'] == "Apple"
+    assert food_api.food_data['user1'][1]['food_type'] == "Apple" # Original index 2 is now 1
 
     response = client.delete('/food/user1/0') # Delete first Apple
     assert response.status_code == 200
-    assert len(food_data['user1']) == 1
-    assert food_data['user1'][0]['food_type'] == "Apple" # Remaining record
+    assert len(food_api.food_data['user1']) == 1
+    assert food_api.food_data['user1'][0]['food_type'] == "Apple" # Remaining record
