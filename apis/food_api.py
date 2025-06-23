@@ -1,103 +1,119 @@
 from flask import Blueprint, jsonify, request
+from app import db  # Import db from the main app
+from models.food import Food  # Import the Food model
 
-food_bp = Blueprint('food_bp', __name__)
+food_bp = Blueprint('food_bp', __name__, url_prefix='/food') # Added url_prefix
 
-# In-memory data store
-food_data = {}
-
-# Food Data CRUD Operations
-
-# Create operation: Add new food information for a user
-@food_bp.route('/food/<string:user_id>', methods=['POST'])
-def add_food_record(user_id):
-    data = request.get_json(silent=True)
-    if data is None:
+# Create operation: Add a new food item to the database
+@food_bp.route('', methods=['POST'])
+def add_food_item():
+    data = request.get_json()
+    if not data:
         return jsonify({"error": "Invalid input"}), 400
 
-    required_fields = ["food_type", "total_calories", "carbohydrate_g", "fat_g", "protein_g"]
+    required_fields = ["name", "calories"] # Protein, carbs, fat are nullable
     if not all(field in data for field in required_fields):
-        return jsonify({"error": "Missing required fields"}), 400
+        return jsonify({"error": "Missing required fields: name, calories"}), 400
 
-    if user_id not in food_data:
-        food_data[user_id] = []
+    # Check if food item with the same name already exists
+    if Food.query.filter_by(name=data['name']).first():
+        return jsonify({"error": f"Food item with name '{data['name']}' already exists"}), 409 # 409 Conflict
 
-    food_data[user_id].append(data)
-    return jsonify({"message": "Food record added successfully", "user_id": user_id, "record_index": len(food_data[user_id]) - 1}), 201
+    try:
+        new_food = Food(
+            name=data['name'],
+            calories=float(data['calories']),
+            protein=data.get('protein'),
+            carbohydrates=data.get('carbohydrates'),
+            fat=data.get('fat')
+        )
+        db.session.add(new_food)
+        db.session.commit()
+        return jsonify(new_food.to_dict()), 201
+    except ValueError: # Catches float conversion errors
+        db.session.rollback()
+        return jsonify({"error": "Invalid data format for numerical fields"}), 400
+    except Exception as e:
+        db.session.rollback()
+        # Log the exception e
+        return jsonify({"error": "Could not add food item"}), 500
+
+# Read operation: Retrieve all food items
+@food_bp.route('', methods=['GET'])
+def get_all_food_items():
+    try:
+        # Basic pagination could be added here:
+        # page = request.args.get('page', 1, type=int)
+        # per_page = request.args.get('per_page', 10, type=int)
+        # food_items_paginated = Food.query.paginate(page=page, per_page=per_page, error_out=False)
+        # food_items = food_items_paginated.items
+        # return jsonify({
+        #     "items": [food.to_dict() for food in food_items],
+        #     "total": food_items_paginated.total,
+        #     "page": food_items_paginated.page,
+        #     "pages": food_items_paginated.pages
+        # }), 200
+
+        food_items = Food.query.all()
+        return jsonify([food.to_dict() for food in food_items]), 200
+    except Exception as e:
+        # Log the exception e
+        return jsonify({"error": "Could not retrieve food items"}), 500
 
 
-# Read operation: Retrieve all food records for a user
-@food_bp.route('/food/<string:user_id>', methods=['GET'])
-def get_food_records(user_id):
-    if user_id not in food_data:
-        return jsonify({"error": "User not found"}), 404
-
-    records_with_ratios = []
-    for record in food_data[user_id]:
-        total_calories = record.get("total_calories")
-        if total_calories and total_calories > 0:
-            record["carbohydrate_ratio"] = (record.get("carbohydrate_g", 0) * 4) / total_calories
-            record["fat_ratio"] = (record.get("fat_g", 0) * 9) / total_calories
-            record["protein_ratio"] = (record.get("protein_g", 0) * 4) / total_calories
-        else:
-            record["carbohydrate_ratio"] = 0
-            record["fat_ratio"] = 0
-            record["protein_ratio"] = 0
-        records_with_ratios.append(record)
-    return jsonify(records_with_ratios), 200
-
-
-# Read operation: Retrieve a specific food record for a user
-@food_bp.route('/food/<string:user_id>/<int:record_index>', methods=['GET'])
-def get_food_record(user_id, record_index):
-    if user_id not in food_data:
-        return jsonify({"error": "User not found"}), 404
-
-    if record_index < 0 or record_index >= len(food_data[user_id]):
-        return jsonify({"error": "Record not found"}), 404
-
-    record = food_data[user_id][record_index]
-    total_calories = record.get("total_calories")
-    if total_calories and total_calories > 0:
-        record["carbohydrate_ratio"] = (record.get("carbohydrate_g", 0) * 4) / total_calories
-        record["fat_ratio"] = (record.get("fat_g", 0) * 9) / total_calories
-        record["protein_ratio"] = (record.get("protein_g", 0) * 4) / total_calories
+# Read operation: Retrieve a specific food item by its ID
+@food_bp.route('/<int:food_id>', methods=['GET'])
+def get_food_item_by_id(food_id):
+    food_item = Food.query.get(food_id)
+    if food_item:
+        return jsonify(food_item.to_dict()), 200
     else:
-        record["carbohydrate_ratio"] = 0
-        record["fat_ratio"] = 0
-        record["protein_ratio"] = 0
-    return jsonify(record), 200
+        return jsonify({"error": "Food item not found"}), 404
 
+# Update operation: Update an existing food item by its ID
+@food_bp.route('/<int:food_id>', methods=['PUT'])
+def update_food_item(food_id):
+    food_item = Food.query.get(food_id)
+    if not food_item:
+        return jsonify({"error": "Food item not found"}), 404
 
-# Update operation: Update an existing food record
-@food_bp.route('/food/<string:user_id>/<int:record_index>', methods=['PUT'])
-def update_food_record(user_id, record_index):
-    if user_id not in food_data:
-        return jsonify({"error": "User not found"}), 404
-
-    if record_index < 0 or record_index >= len(food_data[user_id]):
-        return jsonify({"error": "Record not found"}), 404
-
-    data = request.get_json(silent=True)
-    if data is None:
+    data = request.get_json()
+    if not data:
         return jsonify({"error": "Invalid input"}), 400
 
-    # Basic validation for field types (can be expanded)
-    for field in ["total_calories", "carbohydrate_g", "fat_g", "protein_g"]:
-        if field in data and not isinstance(data[field], (int, float)):
-            return jsonify({"error": f"Invalid data type for {field}"}), 400
+    try:
+        # Check if updating to a name that already exists (and isn't this item itself)
+        if 'name' in data and data['name'] != food_item.name and Food.query.filter_by(name=data['name']).first():
+             return jsonify({"error": f"Food item with name '{data['name']}' already exists"}), 409
 
-    food_data[user_id][record_index].update(data)
-    return jsonify({"message": "Record updated successfully", "user_id": user_id, "record_index": record_index}), 200
+        if 'name' in data: food_item.name = data['name']
+        if 'calories' in data: food_item.calories = float(data['calories'])
+        if 'protein' in data: food_item.protein = data.get('protein')
+        if 'carbohydrates' in data: food_item.carbohydrates = data.get('carbohydrates')
+        if 'fat' in data: food_item.fat = data.get('fat')
 
+        db.session.commit()
+        return jsonify(food_item.to_dict()), 200
+    except ValueError: # Catches float conversion errors
+        db.session.rollback()
+        return jsonify({"error": "Invalid data format for numerical fields"}), 400
+    except Exception as e:
+        db.session.rollback()
+        # Log the exception e
+        return jsonify({"error": "Could not update food item"}), 500
 
-# Delete operation: Delete a specific food record
-@food_bp.route('/food/<string:user_id>/<int:record_index>', methods=['DELETE'])
-def delete_food_record(user_id, record_index):
-    if user_id not in food_data:
-        return jsonify({"error": "User not found"}), 404
+# Delete operation: Delete a specific food item by its ID
+@food_bp.route('/<int:food_id>', methods=['DELETE'])
+def delete_food_item(food_id):
+    food_item = Food.query.get(food_id)
+    if not food_item:
+        return jsonify({"error": "Food item not found"}), 404
 
-    if record_index < 0 or record_index >= len(food_data[user_id]):
-        return jsonify({"error": "Record not found or already deleted"}), 404
-
-    deleted_record = food_data[user_id].pop(record_index)
-    return jsonify({"message": "Record deleted successfully", "deleted_record": deleted_record}), 200
+    try:
+        db.session.delete(food_item)
+        db.session.commit()
+        return jsonify({"message": "Food item deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        # Log the exception e
+        return jsonify({"error": "Could not delete food item"}), 500
